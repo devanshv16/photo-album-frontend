@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Photo Album</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
+    h1 { color: #333; }
+    .section { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    input[type=text], input[type=file] { width: 70%; padding: 8px; margin-right: 10px; border: 1px solid #ccc; border-radius: 4px; }
+    button { padding: 9px 20px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #0052a3; }
+    #results { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 20px; }
+    .photo-card { width: 200px; }
+    .photo-card img { width: 200px; height: 150px; object-fit: cover; border-radius: 4px; }
+    .photo-card p { font-size: 12px; color: #666; word-break: break-all; }
+    .status { color: green; margin-top: 10px; }
+    .error { color: red; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>📷 AI Photo Album</h1>
+
+  <!-- SEARCH SECTION -->
+  <div class="section">
+    <h2>Search Photos</h2>
+    <input type="text" id="searchQuery" placeholder="e.g. show me dogs, cats and trees" />
+    <button onclick="searchPhotos()">Search</button>
+    <div id="searchStatus"></div>
+    <div id="results"></div>
+  </div>
+
+  <!-- UPLOAD SECTION -->
+  <div class="section">
+    <h2>Upload Photo</h2>
+    <input type="file" id="photoFile" accept="image/*" /><br/><br/>
+    <input type="text" id="customLabels" placeholder="Custom labels (comma-separated, e.g. Sam, Sally)" />
+    <button onclick="uploadPhoto()">Upload</button>
+    <div id="uploadStatus"></div>
+  </div>
+
+  <script>
+    // =============================================
+    // CONFIGURATION — REPLACE THESE VALUES
+    // =============================================
+    const API_ENDPOINT = 'https://aet4dozj99.execute-api.us-east-1.amazonaws.com/prod';
+    const API_KEY = 'vdypMf257e1kOCqnJBhq6PmQW9kkJzjabPNlqDO7';
+    const PHOTOS_BUCKET = 'devansh-photos-hw3';
+    const AWS_REGION = 'us-east-1';
+    // =============================================
+
+    async function searchPhotos() {
+      const query = document.getElementById('searchQuery').value.trim();
+      const statusEl = document.getElementById('searchStatus');
+      const resultsEl = document.getElementById('results');
+      
+      if (!query) { statusEl.innerHTML = '<span class="error">Please enter a search query.</span>'; return; }
+      
+      statusEl.innerHTML = 'Searching...';
+      resultsEl.innerHTML = '';
+      
+      try {
+        const response = await fetch(`${API_ENDPOINT}/search?q=${encodeURIComponent(query)}`, {
+          headers: { 'x-api-key': API_KEY }
+        });
+        const data = await response.json();
+        const results = data.results || [];
+        
+        if (results.length === 0) {
+          statusEl.innerHTML = '<span class="error">No photos found.</span>';
+          return;
+        }
+        
+        statusEl.innerHTML = `<span class="status">Found ${results.length} photo(s)</span>`;
+        results.forEach(r => {
+          const card = document.createElement('div');
+          card.className = 'photo-card';
+          card.innerHTML = `
+            <img src="${r.url}" alt="${r.objectKey}" onerror="this.src='https://via.placeholder.com/200x150?text=Error'"/>
+            <p><strong>${r.objectKey}</strong></p>
+            <p>Labels: ${(r.labels || []).join(', ')}</p>
+          `;
+          resultsEl.appendChild(card);
+        });
+      } catch (err) {
+        statusEl.innerHTML = `<span class="error">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function uploadPhoto() {
+      const fileInput = document.getElementById('photoFile');
+      const customLabelsInput = document.getElementById('customLabels').value.trim();
+      const statusEl = document.getElementById('uploadStatus');
+      
+      if (!fileInput.files[0]) { statusEl.innerHTML = '<span class="error">Please select a file.</span>'; return; }
+      
+      const file = fileInput.files[0];
+      const fileName = encodeURIComponent(file.name);
+      statusEl.innerHTML = 'Uploading...';
+      
+      const headers = {
+        'Content-Type': file.type,
+        'x-api-key': API_KEY
+      };
+      
+      if (customLabelsInput) {
+        headers['x-amz-meta-customlabels'] = customLabelsInput;
+      }
+      
+      try {
+        const response = await fetch(`${API_ENDPOINT}/photos/${fileName}`, {
+          method: 'PUT',
+          headers: headers,
+          body: file
+        });
+        
+        if (response.ok || response.status === 200) {
+          statusEl.innerHTML = '<span class="status">✅ Photo uploaded successfully! It will appear in search results shortly.</span>';
+          fileInput.value = '';
+          document.getElementById('customLabels').value = '';
+        } else {
+          statusEl.innerHTML = `<span class="error">Upload failed: ${response.status} ${response.statusText}</span>`;
+        }
+      } catch (err) {
+        statusEl.innerHTML = `<span class="error">Error: ${err.message}</span>`;
+      }
+    }
+
+    // Allow pressing Enter to search
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('searchQuery').addEventListener('keypress', e => {
+        if (e.key === 'Enter') searchPhotos();
+      });
+    });
+  </script>
+</body>
+</html>
